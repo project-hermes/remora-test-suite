@@ -1,117 +1,223 @@
 /*
-  SD card test
+ * Connect the SD card to the following pins:
+ *
+ * SD Card | ESP32
+ *    D2       -
+ *    D3       SS
+ *    CMD      MOSI
+ *    VSS      GND
+ *    VDD      3.3V
+ *    CLK      SCK
+ *    VSS      GND
+ *    D0       MISO
+ *    D1       -
+ */
+#include "FS.h"
+#include "SD.h"
+#include "SPI.h"
 
-  This example shows how use the utility libraries on which the'
-  SD library is based in order to get info about your SD card.
-  Very useful for testing a card when you're not sure whether its working or not.
+void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
+    Serial.printf("Listing directory: %s\n", dirname);
 
-  The circuit:
-    SD card attached to SPI bus as follows:
- ** MOSI - pin 11 on Arduino Uno/Duemilanove/Diecimila
- ** MISO - pin 12 on Arduino Uno/Duemilanove/Diecimila
- ** CLK - pin 13 on Arduino Uno/Duemilanove/Diecimila
- ** CS - depends on your SD card shield or module.
-        Pin 4 used here for consistency with other Arduino examples
+    File root = fs.open(dirname);
+    if(!root){
+        Serial.println("Failed to open directory");
+        return;
+    }
+    if(!root.isDirectory()){
+        Serial.println("Not a directory");
+        return;
+    }
 
-
-  created  28 Mar 2011
-  by Limor Fried
-  modified 9 Apr 2012
-  by Tom Igoe
-*/
-// include the SD library:
-#include <Arduino.h>
-#include <SPI.h>
-#include <SD.h>
-
-// set up variables using the SD utility library functions:
-Sd2Card card;
-SdVolume volume;
-SdFile root;
-
-// change this to match your SD shield or module;
-// Arduino Ethernet shield: pin 4
-// Adafruit SD shields and modules: pin 10
-// Sparkfun SD shield: pin 8
-// MKRZero SD: SDCARD_SS_PIN
-const int chipSelect = 4;
-
-void setup() {
-  // Open serial communications and wait for port to open:
-  Serial.begin(9600);
-  while (!Serial) {
-    ; // wait for serial port to connect. Needed for native USB port only
-  }
-
-
-  Serial.print("\nInitializing SD card...");
-
-  // we'll use the initialization code from the utility libraries
-  // since we're just testing if the card is working!
-  if (!card.init(SPI_HALF_SPEED, chipSelect)) {
-    Serial.println("initialization failed. Things to check:");
-    Serial.println("* is a card inserted?");
-    Serial.println("* is your wiring correct?");
-    Serial.println("* did you change the chipSelect pin to match your shield or module?");
-    while (1);
-  } else {
-    Serial.println("Wiring is correct and a card is present.");
-  }
-
-  // print the type of card
-  Serial.println();
-  Serial.print("Card type:         ");
-  switch (card.type()) {
-    case SD_CARD_TYPE_SD1:
-      Serial.println("SD1");
-      break;
-    case SD_CARD_TYPE_SD2:
-      Serial.println("SD2");
-      break;
-    case SD_CARD_TYPE_SDHC:
-      Serial.println("SDHC");
-      break;
-    default:
-      Serial.println("Unknown");
-  }
-
-  // Now we will try to open the 'volume'/'partition' - it should be FAT16 or FAT32
-  if (!volume.init(card)) {
-    Serial.println("Could not find FAT16/FAT32 partition.\nMake sure you've formatted the card");
-    while (1);
-  }
-
-  Serial.print("Clusters:          ");
-  Serial.println(volume.clusterCount());
-  Serial.print("Blocks x Cluster:  ");
-  Serial.println(volume.blocksPerCluster());
-
-  Serial.print("Total Blocks:      ");
-  Serial.println(volume.blocksPerCluster() * volume.clusterCount());
-  Serial.println();
-
-  // print the type and size of the first FAT-type volume
-  uint32_t volumesize;
-  Serial.print("Volume type is:    FAT");
-  Serial.println(volume.fatType(), DEC);
-
-  volumesize = volume.blocksPerCluster();    // clusters are collections of blocks
-  volumesize *= volume.clusterCount();       // we'll have a lot of clusters
-  volumesize /= 2;                           // SD card blocks are always 512 bytes (2 blocks are 1KB)
-  Serial.print("Volume size (Kb):  ");
-  Serial.println(volumesize);
-  Serial.print("Volume size (Mb):  ");
-  volumesize /= 1024;
-  Serial.println(volumesize);
-  Serial.print("Volume size (Gb):  ");
-  Serial.println((float)volumesize / 1024.0);
-
-  Serial.println("\nFiles found on the card (name, date and size in bytes): ");
-  root.openRoot(volume);
-
-  // list all files in the card with date and size
-  root.ls(LS_R | LS_DATE | LS_SIZE);
+    File file = root.openNextFile();
+    while(file){
+        if(file.isDirectory()){
+            Serial.print("  DIR : ");
+            Serial.println(file.name());
+            if(levels){
+                listDir(fs, file.name(), levels -1);
+            }
+        } else {
+            Serial.print("  FILE: ");
+            Serial.print(file.name());
+            Serial.print("  SIZE: ");
+            Serial.println(file.size());
+        }
+        file = root.openNextFile();
+    }
 }
 
-void loop(void) {
+void createDir(fs::FS &fs, const char * path){
+    Serial.printf("Creating Dir: %s\n", path);
+    if(fs.mkdir(path)){
+        Serial.println("Dir created");
+    } else {
+        Serial.println("mkdir failed");
+    }
+}
+
+void removeDir(fs::FS &fs, const char * path){
+    Serial.printf("Removing Dir: %s\n", path);
+    if(fs.rmdir(path)){
+        Serial.println("Dir removed");
+    } else {
+        Serial.println("rmdir failed");
+    }
+}
+
+void readFile(fs::FS &fs, const char * path){
+    Serial.printf("Reading file: %s\n", path);
+
+    File file = fs.open(path);
+    if(!file){
+        Serial.println("Failed to open file for reading");
+        return;
+    }
+
+    Serial.print("Read from file: ");
+    while(file.available()){
+        Serial.write(file.read());
+    }
+    file.close();
+}
+
+void writeFile(fs::FS &fs, const char * path, const char * message){
+    Serial.printf("Writing file: %s\n", path);
+
+    File file = fs.open(path, FILE_WRITE);
+    if(!file){
+        Serial.println("Failed to open file for writing");
+        return;
+    }
+    if(file.print(message)){
+        Serial.println("File written");
+    } else {
+        Serial.println("Write failed");
+    }
+    file.close();
+}
+
+void appendFile(fs::FS &fs, const char * path, const char * message){
+    Serial.printf("Appending to file: %s\n", path);
+
+    File file = fs.open(path, FILE_APPEND);
+    if(!file){
+        Serial.println("Failed to open file for appending");
+        return;
+    }
+    if(file.print(message)){
+        Serial.println("Message appended");
+    } else {
+        Serial.println("Append failed");
+    }
+    file.close();
+}
+
+void renameFile(fs::FS &fs, const char * path1, const char * path2){
+    Serial.printf("Renaming file %s to %s\n", path1, path2);
+    if (fs.rename(path1, path2)) {
+        Serial.println("File renamed");
+    } else {
+        Serial.println("Rename failed");
+    }
+}
+
+void deleteFile(fs::FS &fs, const char * path){
+    Serial.printf("Deleting file: %s\n", path);
+    if(fs.remove(path)){
+        Serial.println("File deleted");
+    } else {
+        Serial.println("Delete failed");
+    }
+}
+
+void testFileIO(fs::FS &fs, const char * path){
+    File file = fs.open(path);
+    static uint8_t buf[512];
+    size_t len = 0;
+    uint32_t start = millis();
+    uint32_t end = start;
+    if(file){
+        len = file.size();
+        size_t flen = len;
+        start = millis();
+        while(len){
+            size_t toRead = len;
+            if(toRead > 512){
+                toRead = 512;
+            }
+            file.read(buf, toRead);
+            len -= toRead;
+        }
+        end = millis() - start;
+        Serial.printf("%u bytes read for %u ms\n", flen, end);
+        file.close();
+    } else {
+        Serial.println("Failed to open file for reading");
+    }
+
+
+    file = fs.open(path, FILE_WRITE);
+    if(!file){
+        Serial.println("Failed to open file for writing");
+        return;
+    }
+
+    size_t i;
+    start = millis();
+    for(i=0; i<2048; i++){
+        file.write(buf, 512);
+    }
+    end = millis() - start;
+    Serial.printf("%u bytes written for %u ms\n", 2048 * 512, end);
+    file.close();
+}
+
+void setup(){
+    Serial.begin(115200);
+    SPI.begin(18, 19, 23);
+    if (!SD.begin(5))
+    {
+      Serial.println("Card Mount Failed");
+      return;
+    }
+    uint8_t cardType = SD.cardType();
+
+    if(cardType == CARD_NONE){
+        Serial.println("No SD card attached");
+        return;
+    }
+
+    Serial.print("SD Card Type: ");
+    if(cardType == CARD_MMC){
+        Serial.println("MMC");
+    } else if(cardType == CARD_SD){
+        Serial.println("SDSC");
+    } else if(cardType == CARD_SDHC){
+        Serial.println("SDHC");
+    } else {
+        Serial.println("UNKNOWN");
+    }
+
+    uint64_t cardSize = SD.cardSize() / (1024 * 1024);
+    Serial.printf("SD Card Size: %lluMB\n", cardSize);
+
+    listDir(SD, "/", 0);
+    createDir(SD, "/mydir");
+    listDir(SD, "/", 0);
+    removeDir(SD, "/mydir");
+    listDir(SD, "/", 2);
+    writeFile(SD, "/hello.txt", "Hello ");
+    appendFile(SD, "/hello.txt", "World!\n");
+    readFile(SD, "/hello.txt");
+    deleteFile(SD, "/foo.txt");
+    renameFile(SD, "/hello.txt", "/foo.txt");
+    readFile(SD, "/foo.txt");
+    testFileIO(SD, "/test.txt");
+    Serial.printf("Total space: %lluMB\n", SD.totalBytes() / (1024 * 1024));
+    Serial.printf("Used space: %lluMB\n", SD.usedBytes() / (1024 * 1024));
+}
+
+void loop(){
+
 }
