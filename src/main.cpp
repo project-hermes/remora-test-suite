@@ -3,13 +3,11 @@
 void setup()
 {
     Serial.begin(115200);
-    Serial2.begin(9600);
+    pinMode(33, INPUT);
 }
 
 void loop()
 {
-    while (Serial2.available())
-    {
-        Serial.print(char(Serial2.read()));
-    }
+    delay(1000);
+    Serial.println(digitalRead(33));
 }
