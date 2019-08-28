@@ -3,13 +3,23 @@
 void setup()
 {
     Serial.begin(115200);
-    Serial2.begin(9600);
+
+    pinMode(34, INPUT);
+    pinMode(35, INPUT);
+
+    pinMode(12, OUTPUT);
+
+    digitalWrite(12, HIGH);
 }
 
 void loop()
 {
-    while (Serial2.available())
-    {
-        Serial.print(char(Serial2.read()));
+    delay(1000);
+    Serial.printf("bat %d\n", analogRead(34));
+    Serial.printf("vcc %d\n", digitalRead(35));
+    if(digitalRead(35)==1){
+        digitalWrite(12, HIGH);
+    }else{
+        digitalWrite(12, LOW);
     }
 }
