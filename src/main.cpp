@@ -40,7 +40,7 @@ void setup()
     delay(100);
 
     wakeup();
-    uint64_t wakeMask = 1ULL << 36;
+    uint64_t wakeMask = 1ULL << 39 | 1ULL << 36;
     esp_sleep_enable_ext1_wakeup(wakeMask, ESP_EXT1_WAKEUP_ANY_HIGH);
     Serial.println("Going to sleep now");
     esp_deep_sleep_start();
