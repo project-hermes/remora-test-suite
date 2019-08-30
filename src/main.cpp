@@ -9,6 +9,7 @@
 
 void initGPS();
 void initIMU();
+void initSensors();
 
 WebServer Server;
 AutoConnect Portal(Server);
@@ -148,6 +149,7 @@ void printAttitude(float ax, float ay, float az, float mx, float my, float mz)
 
 void dive()
 {
+    initSensors();
     initGPS();
     initIMU();
 
@@ -230,12 +232,15 @@ void initSerial()
     Serial.begin(115200); //serial for USB
 }
 
+void initSensors(){
+    pinMode(GPIO_SENSOR_POWER, OUTPUT);
+    digitalWrite(GPIO_SENSOR_POWER, LOW);
+    delay(100);
+}
+
 void initGPS()
 {
     Serial.println("Starting GPS...");
-    pinMode(GPIO_SENSOR_POWER, OUTPUT);
-    digitalWrite(GPIO_SENSOR_POWER, LOW);
-
     pinMode(GPIO_GPS_POWER, OUTPUT);
     digitalWrite(GPIO_GPS_POWER, LOW);
 
