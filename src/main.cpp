@@ -4,6 +4,11 @@
 #include "GPS.h"
 #include "SparkFunLSM9DS1.h"
 #include <Wire.h>
+#include "FS.h"
+#include "SD.h"
+#include "SPI.h"
+#include "tsys01.h"
+#include "ms5837.h"
 
 #define GPSSerial Serial2
 
@@ -37,6 +42,61 @@ void startPortal()
     {
         Portal.handleClient();
     }
+}
+
+void createDir(fs::FS &fs, const char *path)
+{
+    Serial.printf("Creating Dir: %s\n", path);
+    if (fs.mkdir(path))
+    {
+        Serial.println("Dir created");
+    }
+    else
+    {
+        Serial.println("mkdir failed");
+    }
+}
+
+void writeFile(fs::FS &fs, const char *path, const char *message)
+{
+    Serial.printf("Writing file: %s\n", path);
+
+    File file = fs.open(path, FILE_WRITE);
+    if (!file)
+    {
+        Serial.println("Failed to open file for writing");
+        return;
+    }
+    if (file.print(message))
+    {
+        Serial.println("File written");
+    }
+    else
+    {
+        Serial.println("Write failed");
+    }
+    file.close();
+}
+
+void appendFile(fs::FS &fs, const char *path, const char *message)
+{
+    Serial.printf("Appending to file: %s\n", path);
+
+    File file = fs.open(path, FILE_APPEND);
+    if (!file)
+    {
+        Serial.println("Failed to open file for appending");
+        return;
+    }
+    if (file.print(message))
+    {
+        Serial.println("Message appended");
+    }
+    else
+    {
+        Serial.println("Append failed");
+    }
+    file.close();
 }
 
 void printGyro()
@@ -166,17 +226,26 @@ void dive()
     {
         imu.readMag();
     }
+    if (imu.tempAvailable())
+    {
+        imu.readTemp();
+    }
 
     printGyro();  // Print "G: gx, gy, gz"
     printAccel(); // Print "A: ax, ay, az"
     printMag();   // Print "M: mx, my, mz"
-    // Print the heading and orientation for fun!
-    // Call print attitude. The LSM9DS1's mag x and y
-    // axes are opposite to the accelerometer, so my, mx are
-    // substituted for each other.
     printAttitude(imu.ax, imu.ay, imu.az,
                   -imu.my, -imu.mx, imu.mz);
-    Serial.println();
+    Serial.printf("I Temp %d\n", imu.temperature);
+
+    tsys01 *tempSensor;
+    tempSensor = new tsys01();
+    ms5837 *depthSensor;
+    depthSensor = new ms5837();
+
+    Serial.printf("T Temp %f\n", tempSensor->readTemp());
+    Serial.printf("M Temp %f\n", depthSensor->readTemp());
+    Serial.printf("Depth %f\n", depthSensor->readDepth());
 }
 
 void wakeup()
@@ -232,7 +301,8 @@ void initSerial()
     Serial.begin(115200); //serial for USB
 }
 
-void initSensors(){
+void initSensors()
+{
     pinMode(GPIO_SENSOR_POWER, OUTPUT);
     digitalWrite(GPIO_SENSOR_POWER, LOW);
     delay(100);
@@ -248,7 +318,7 @@ void initGPS()
     while (GPSSerial.available() == 0)
     {
     }
-    delay(100);
+    delay(1000);
 }
 
 void initIMU()
@@ -263,7 +333,8 @@ void initIMU()
     {
         Serial.println("Failed to communicate with LSM9DS1.");
         Serial.println("Double-check wiring.");
-        while (true);// this is a bad idea
+        while (true)
+            ; // this is a bad idea
     }
 }
 
