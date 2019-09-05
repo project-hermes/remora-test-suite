@@ -32,10 +32,11 @@ static unsigned long lastPrint = 0; // Keep track of print time
 
 void startPortal()
 {
-    Serial.printf("starting config portal\n");
-    AutoConnectConfig acConfig("Remora", "Dive");
+    Serial.printf("starting config portal...\n");
+    AutoConnectConfig acConfig("Remora", "Remora");
     acConfig.autoReconnect = false;
     acConfig.autoReset = true;
+    acConfig.title = "Remora Setup";
     Portal.config(acConfig);
     Portal.begin();
     while (WiFi.getMode() == WIFI_AP_STA)
@@ -260,7 +261,7 @@ void wakeup()
             Serial.printf("Wakeup because %d\n", i);
             if (i == GPIO_CONFIG)
             {
-                dive();
+                startPortal();
             }
             else if (i == GPIO_WATER)
             {
