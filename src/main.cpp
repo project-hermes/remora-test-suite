@@ -33,10 +33,13 @@ static unsigned long lastPrint = 0; // Keep track of print time
 void startPortal()
 {
     Serial.printf("starting config portal...\n");
-    AutoConnectConfig acConfig("Remora", "Remora");
+    AutoConnectConfig acConfig("Remora Config", "password");
     acConfig.autoReconnect = false;
     acConfig.autoReset = true;
-    acConfig.title = "Remora Setup";
+    acConfig.title = "Remora Config";
+    acConfig.ticker = true;
+    acConfig.tickerPort = GPIO_LED1;
+    acConfig.tickerOn = HIGH;
     Portal.config(acConfig);
     Portal.begin();
     while (WiFi.getMode() == WIFI_AP_STA)
@@ -259,7 +262,7 @@ void wakeup()
         if (wakeup_reason & mask)
         {
             Serial.printf("Wakeup because %d\n", i);
-            if (i == GPIO_CONFIG)
+            if (i == GPIO_CONFIG|i == GPIO_VCC_SENSE)
             {
                 startPortal();
             }
@@ -275,7 +278,7 @@ void wakeup()
 
 void sleep()
 {
-    uint64_t wakeMask = 1ULL << GPIO_CONFIG | 1ULL << GPIO_WATER;
+    uint64_t wakeMask = 1ULL << GPIO_CONFIG | 1ULL << GPIO_WATER | 1ULL << GPIO_VCC_SENSE;
     esp_sleep_enable_ext1_wakeup(wakeMask, ESP_EXT1_WAKEUP_ANY_HIGH);
     Serial.println("Going to sleep now");
     esp_deep_sleep_start();
@@ -290,6 +293,7 @@ void initGpio()
     pinMode(GPIO_CONFIG, INPUT);
     pinMode(GPIO_WATER, INPUT);
     pinMode(GPIO_VCC_SENSE, INPUT);
+    pinMode(34, INPUT);
 
     pinMode(GPIO_LED1, OUTPUT);
     pinMode(GPIO_LED2, OUTPUT);
@@ -339,11 +343,16 @@ void initIMU()
     }
 }
 
+void testHandle(){
+    Server.send(200, "text/html", String(analogRead(34)));
+}
+
 void setup()
 {
     initSerial();
     initGpio();
 
+    Server.on("/", testHandle);
     wakeup();
     sleep();
 }
