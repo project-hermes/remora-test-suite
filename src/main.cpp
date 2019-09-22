@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <Wire.h>
+#include <SD.h>
 
 #include <Dive.hpp>
 #include <hal/TSYS01.hpp>

@@ -50,7 +50,7 @@ private:
     int writeSilo()
     {
         //FYI if this is not big enough it will just cut off what can't fit
-        DynamicJsonDocument jsonSilo(siloByteSize); //that should hold it
+        DynamicJsonDocument jsonSilo(siloByteSize);
 
         jsonSilo["id"] = ID;
         jsonSilo["order"] = order;
@@ -68,11 +68,7 @@ private:
         char *buffer = new char[bufferSize];
         int bytesWritten = serializeMsgPack(jsonSilo, buffer, bufferSize);
 
-        for (int i = 0; i < bytesWritten; i++)
-        {
-            Serial.printf("%02X ", buffer[i]);
-        }
-        return 0;
+        return storage->writeFile(String(ID + "/silo" + order).c_str(), buffer);
     }
 
     int writeMetadataStart(long time, double lat, double lng, int freq)
