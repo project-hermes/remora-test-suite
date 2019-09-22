@@ -5,7 +5,7 @@
 #include <hal/TSYS01.hpp>
 #include <hal/MS5837.hpp>
 #include <hal/remora-hal.h>
-#include <SecureDigital.hpp>
+#include <Storage/SecureDigital.hpp>
 
 void setup()
 {
