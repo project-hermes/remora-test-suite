@@ -2,7 +2,7 @@
 #include <Wire.h>
 #include <math.h>
 
-#include "tsys01.h"
+#include <hal/TSYS01.hpp>
 
 tsys01::tsys01()
 {
@@ -23,7 +23,7 @@ tsys01::tsys01()
     }
 }
 
-double tsys01::readTemp()
+double tsys01::getTemp()
 {
     Wire.beginTransmission(_addr);
     Wire.write(_adc_temp_conv);
