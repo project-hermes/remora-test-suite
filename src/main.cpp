@@ -7,6 +7,7 @@ void setup(){
     delay(1000);
     Dive d;
     d.Start(432432432l, 233.2322,432.2323);
+    d.NewRecord();
 }
 
 void loop(){
