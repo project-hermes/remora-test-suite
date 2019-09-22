@@ -33,7 +33,7 @@ public:
     Dive(Storage *s);
     String Start(long time, double lat, double lng);
     String End(long time, double lat, double lng);
-    int NewRecord();
+    int NewRecord(Record r);
 
 private:
     Storage *storage;
@@ -60,13 +60,20 @@ private:
         }
 
         JsonArray records = jsonSilo.createNestedArray("records");
-        for (int i = 0; i < siloSize;i++){
+        for (int i = 0; i < siloSize; i++)
+        {
             JsonArray record = records.createNestedArray();
             record.add(diveRecords[i].Temp);
             record.add(diveRecords[i].Depth);
         }
 
-        serializeJsonPretty(jsonSilo, Serial);
+        //serializeJsonPretty(jsonSilo, Serial);
+        char buffer[500];
+        int bytesWritten = serializeMsgPack(jsonSilo, buffer);
+        for (int i = 0; i < bytesWritten; i++)
+        {
+            Serial.printf("%02X ", buffer[i]);
+        }
         return 0;
     }
 
@@ -92,6 +99,7 @@ private:
         data = data + "endTime:" + time + "\n";
         data = data + "endLat:" + lat + "\n";
         data = data + "endLng:" + lng + "\n";
+        data = data + "numberOfSilos" + order + "\n";
 
         return storage->appendFile(String(ID + "/metadata").c_str(), data.c_str());
     }

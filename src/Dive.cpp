@@ -11,18 +11,20 @@ Dive::Dive(Storage *s)
 String Dive::Start(long time, double lat, double lng)
 {
     ID = createID(time);
-    diveRecords = new Record[600];
+    diveRecords = new Record[siloSize];
     return ID;
 }
 
-int Dive::NewRecord()
+int Dive::NewRecord(Record r)
 {
-    diveRecords[currentRecords] = Record{Temp:2, Depth:1};
+    diveRecords[currentRecords] = r;
     currentRecords++;
     if (currentRecords == siloSize)
     {
         writeSilo();
         delete[] diveRecords;
+        diveRecords = new Record[siloSize];
+        currentRecords = 0;
     }
     return 0;
 }
