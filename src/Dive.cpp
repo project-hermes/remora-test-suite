@@ -12,6 +12,16 @@ String Dive::Start(long time, double lat, double lng)
 {
     ID = createID(time);
     diveRecords = new Record[siloRecordSize];
+    if(writeMetadataStart(time,lat,lng, 1)==-1){
+        return "";
+    }
+    return ID;
+}
+
+String Dive::End(long time, double lat, double lng){
+    if(writeMetadataEnd(time, lat, lng)==-1){
+        return "";
+    }
     return ID;
 }
 
@@ -21,7 +31,10 @@ int Dive::NewRecord(Record r)
     currentRecords++;
     if (currentRecords == siloRecordSize)
     {
-        writeSilo();
+        if(writeSilo()==-1){
+            Serial.println("error saving silo");
+            return -1;
+        }
         delete[] diveRecords;
         diveRecords = new Record[siloRecordSize];
         currentRecords = 0;

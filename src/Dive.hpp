@@ -64,18 +64,17 @@ private:
             record.add(diveRecords[i].Depth);
         }
 
-        size_t bufferSize = siloByteSize;
-        char *buffer = new char[bufferSize];
-        int bytesWritten = serializeMsgPack(jsonSilo, buffer, bufferSize);
-
-        return storage->writeFile(String(ID + "/silo" + order).c_str(), buffer);
+        String buffer;
+        serializeJson(jsonSilo, buffer);
+        
+        return storage->writeFile(String("/" + ID + "/silos_" + order + ".data").c_str(), buffer);
     }
 
     int writeMetadataStart(long time, double lat, double lng, int freq)
     {
         String data;
 
-        storage->makeDirectory(ID.c_str());
+        storage->makeDirectory(String("/" + ID).c_str());
 
         data = data + "id:" + ID + "\n";
         data = data + "startTime:" + time + "\n";
@@ -83,12 +82,13 @@ private:
         data = data + "startLng:" + lng + "\n";
         data = data + "freq:" + freq + "\n";
         data = data + "schema:[";
-        for (int i = 0; i < 2;i++){
-            data = data +","+ recordSchema[i];
+        for (int i = 0; i < 2; i++)
+        {
+            data = data + "," + recordSchema[i];
         }
         data = data + "]\n";
 
-        return storage->writeFile(String(ID + "/metadata").c_str(), data.c_str());
+        return storage->writeFile(String("/" + ID + "/metadata.txt").c_str(), data.c_str());
     }
 
     int writeMetadataEnd(long time, double lat, double lng)
@@ -98,9 +98,9 @@ private:
         data = data + "endTime:" + time + "\n";
         data = data + "endLat:" + lat + "\n";
         data = data + "endLng:" + lng + "\n";
-        data = data + "numberOfSilos" + order + "\n";
+        data = data + "numberOfSilos:" + order + "\n";
 
-        return storage->appendFile(String(ID + "/metadata").c_str(), data.c_str());
+        return storage->appendFile(String("/" + ID + "/metadata.txt").c_str(), data.c_str());
     }
 
     String createID(long time)
