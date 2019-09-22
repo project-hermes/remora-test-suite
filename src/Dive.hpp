@@ -42,28 +42,29 @@ private:
     DiveMetadata metadata;
     int order = 0;
     const String recordSchema[2] = {"temp", "depth"};
-    const int siloSize = 300;
+    const int siloRecordSize = 300;
+    const int siloByteSize = 27000;
     int currentRecords = 0;
     Record *diveRecords;
 
     int writeSilo()
     {
         //FYI if this is not big enough it will just cut off what can't fit
-        DynamicJsonDocument jsonSilo(27000); //that should hold it
+        DynamicJsonDocument jsonSilo(siloByteSize); //that should hold it
 
         jsonSilo["id"] = ID;
         jsonSilo["order"] = order;
         order++;
 
         JsonArray records = jsonSilo.createNestedArray("records");
-        for (int i = 0; i < siloSize; i++)
+        for (int i = 0; i < siloRecordSize; i++)
         {
             JsonArray record = records.createNestedArray();
             record.add(diveRecords[i].Temp);
             record.add(diveRecords[i].Depth);
         }
 
-        size_t bufferSize = 27000;
+        size_t bufferSize = siloByteSize;
         char *buffer = new char[bufferSize];
         int bytesWritten = serializeMsgPack(jsonSilo, buffer, bufferSize);
 
