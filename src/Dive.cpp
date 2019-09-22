@@ -1,10 +1,13 @@
 #include <Dive.hpp>
 #include <Storage.hpp>
 
-Dive::Dive(Storage &s){
-    
+Dive::Dive(void){}
+
+Dive::Dive(Storage *s){
+    storage = s;
 }
 
-string Dive::Start(double time, double lat, double lng){
-    
+String Dive::Start(long time, double lat, double lng){
+    ID = createID(time);
+    return ID;
 }
