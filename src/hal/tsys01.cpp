@@ -23,7 +23,7 @@ tsys01::tsys01()
     }
 }
 
-double tsys01::getTemp()
+temperature tsys01::getTemp()
 {
     Wire.beginTransmission(_addr);
     Wire.write(_adc_temp_conv);

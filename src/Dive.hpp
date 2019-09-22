@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 
 #include <Storage.hpp>
+#include <Types.hpp>
 
 using namespace std;
 
@@ -22,8 +23,8 @@ struct DiveMetadata
 
 struct Record
 {
-    double Temp;
-    double Depth;
+    temperature Temp;
+    depth Depth;
 };
 
 class Dive
@@ -41,23 +42,18 @@ private:
     DiveMetadata metadata;
     int order = 0;
     const String recordSchema[2] = {"temp", "depth"};
-    const int siloSize = 1;
+    const int siloSize = 300;
     int currentRecords = 0;
     Record *diveRecords;
 
     int writeSilo()
     {
         //FYI if this is not big enough it will just cut off what can't fit
-        DynamicJsonDocument jsonSilo(500); //that should hold it
+        DynamicJsonDocument jsonSilo(27000); //that should hold it
 
         jsonSilo["id"] = ID;
         jsonSilo["order"] = order;
         order++;
-        JsonArray schema = jsonSilo.createNestedArray("schema");
-        for (int i = 0; i < 2; i++)
-        { //I need to find the size of recordSchema
-            schema.add(recordSchema[i]);
-        }
 
         JsonArray records = jsonSilo.createNestedArray("records");
         for (int i = 0; i < siloSize; i++)
@@ -67,9 +63,10 @@ private:
             record.add(diveRecords[i].Depth);
         }
 
-        //serializeJsonPretty(jsonSilo, Serial);
-        char buffer[500];
-        int bytesWritten = serializeMsgPack(jsonSilo, buffer);
+        size_t bufferSize = 27000;
+        char *buffer = new char[bufferSize];
+        int bytesWritten = serializeMsgPack(jsonSilo, buffer, bufferSize);
+
         for (int i = 0; i < bytesWritten; i++)
         {
             Serial.printf("%02X ", buffer[i]);
@@ -88,6 +85,11 @@ private:
         data = data + "startLat:" + lat + "\n";
         data = data + "startLng:" + lng + "\n";
         data = data + "freq:" + freq + "\n";
+        data = data + "schema:[";
+        for (int i = 0; i < 2;i++){
+            data = data +","+ recordSchema[i];
+        }
+        data = data + "]\n";
 
         return storage->writeFile(String(ID + "/metadata").c_str(), data.c_str());
     }

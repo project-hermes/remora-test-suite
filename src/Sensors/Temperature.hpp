@@ -1,20 +1,26 @@
+#ifndef TEMPERATURE_H
+#define TEMPERATURE_H
+
 #include <Sensors/Sensor.hpp>
+#include <Types.hpp>
 
 using namespace std;
 
 class Temperature: public Sensor{
     public:
-        virtual double getTemp() = 0;
+        virtual temperature getTemp() = 0;
 
-        double toFahrenheit(double temp){
-            return (temp * (9 / 5)) + 32;
+        temperature toFahrenheit(temperature t){
+            return (t * (9 / 5)) + 32;
         }
 
-        double toCelsius(double temp){
-            return (temp - 32) * (5 / 9);
+        temperature toCelsius(temperature t){
+            return (t - 32) * (5 / 9);
         }
 
-        double toKelvin(double temp){
-            return temp + 273.15;
+        temperature toKelvin(temperature t){
+            return t + 273.15;
         }
 };
+
+#endif

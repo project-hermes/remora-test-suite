@@ -3,7 +3,8 @@
 #include <Wire.h>
 #include <esp_log.h>
 
-#include "ms5837.h"
+#include <hal/MS5837.hpp>
+#include <Types.hpp>
 
 ms5837::ms5837()
 {
@@ -132,19 +133,19 @@ void ms5837::computePressure()
     _pressure = ((_rawPres * sensitivity / pow(2, 21) - offset) / pow(2, 13)) / 10;
 }
 
-float ms5837::readPressure()
+pressure ms5837::getPressure()
 {
     computePressure();
     return _pressure;
 }
 
-float ms5837::readTemp()
+temperature ms5837::getTemp()
 {
     computeTemp();
     return _temp / 100.0;
 }
 
-float ms5837::readDepth()
+depth ms5837::getDepth()
 {
     computePressure();
     return ((_pressure * _pa) - 101300) / (_fluidDensity * 9.80665f);
