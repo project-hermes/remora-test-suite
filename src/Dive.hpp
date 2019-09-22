@@ -67,7 +67,7 @@ private:
         String buffer;
         serializeJson(jsonSilo, buffer);
         
-        return storage->writeFile(String("/" + ID + "/silos_" + order + ".data").c_str(), buffer);
+        return storage->writeFile(String("/" + ID + "/silos_" + order + ".json").c_str(), buffer);
     }
 
     int writeMetadataStart(long time, double lat, double lng, int freq)
