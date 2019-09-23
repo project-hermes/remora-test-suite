@@ -9,12 +9,14 @@
 #include "SPI.h"
 #include "tsys01.h"
 #include "ms5837.h"
+#include <time.h>
 
 #define GPSSerial Serial2
 
 void initGPS();
 void initIMU();
 void initSensors();
+bool initSD();
 
 WebServer Server;
 AutoConnect Portal(Server);
@@ -79,27 +81,32 @@ typedef struct DIVE_INFO
 DIVE_DATA lastSample;
 DIVE_INFO diveInfo;
 RAW_DEPTH lastDepth;
+
+const int MAX_SAMPLES = 1000;
+DIVE_SAMPLE DiveData[MAX_SAMPLES];
+
+int DiveCount = 0;
 //
 // END HERMES DATA FORMATS
 //
 
-void sprintSample(char *buffer, DIVE_SAMPLE sample)
+int sprintSampleNo(char *buffer, int sampleNo)
 {
-    sprintf(buffer, "%d,%d,%d, %.3f,%.3f, %d,%d, %d, %d,%d,%d, %d,%d,%d, %d,%d,%d",
-            sample.tempTs, sample.tempMs, sample.presMs,
-            sample.lat, sample.lng,
-            sample.date, sample.time,
-            sample.tempImu,
-            sample.gx, sample.gy, sample.gz,
-            sample.ax, sample.ay, sample.az,
-            sample.mx, sample.my, sample.mz);
+    return sprintf(buffer, "%d,%d,%d, %.3f,%.3f, %d,%d, %d, %d,%d,%d, %d,%d,%d, %d,%d,%d\n",
+                   DiveData[sampleNo].tempTs, DiveData[sampleNo].tempMs, DiveData[sampleNo].presMs,
+                   DiveData[sampleNo].lat, DiveData[sampleNo].lng,
+                   DiveData[sampleNo].date, DiveData[sampleNo].time,
+                   DiveData[sampleNo].tempImu,
+                   DiveData[sampleNo].gx, DiveData[sampleNo].gy, DiveData[sampleNo].gz,
+                   DiveData[sampleNo].ax, DiveData[sampleNo].ay, DiveData[sampleNo].az,
+                   DiveData[sampleNo].mx, DiveData[sampleNo].my, DiveData[sampleNo].mz);
 }
 
-void printSample(DIVE_SAMPLE sample)
+void printSampleNo(int sampleNo)
 {
-    char buffer[512];
-    sprintSample(buffer, sample);
-    Serial.println(buffer);
+    char buffer[255];
+    sprintSampleNo(buffer, sampleNo);
+    Serial.print(buffer);
 }
 
 void startPortal()
@@ -284,31 +291,31 @@ void sprintGPS(char *buffer)
     sprintf(buffer, "Location: ");
     if (gpsReader.location.isValid())
     {
-        sprintf(buffer, "%.6f,%.6f", gpsReader.location.lat(), gpsReader.location.lng());
+        sprintf(buffer, "%s%.6f,%.6f", buffer, gpsReader.location.lat(), gpsReader.location.lng());
     }
     else
     {
-        sprintf(buffer, "INVALID");
+        sprintf(buffer, "%sINVALID", buffer);
     }
 
-    sprintf(buffer, "  Date/Time: ");
+    sprintf(buffer, "%s  Date/Time: ", buffer);
     if (gpsReader.date.isValid())
     {
-        sprintf(buffer, "%d-%02d-%02d", gpsReader.date.year(), gpsReader.date.month(), gpsReader.date.day());
+        sprintf(buffer, "%s%d-%02d-%02d", buffer, gpsReader.date.year(), gpsReader.date.month(), gpsReader.date.day());
     }
     else
     {
-        sprintf(buffer, "INVALID");
+        sprintf(buffer, "%sINVALID", buffer);
     }
 
-    sprintf(buffer, " ");
+    sprintf(buffer, "%s ", buffer);
     if (gpsReader.time.isValid())
     {
-        sprintf(buffer, "%02d:%02d:%02d.%02d", gpsReader.time.hour(), gpsReader.time.minute(), gpsReader.time.second(), gpsReader.time.centisecond());
+        sprintf(buffer, "%s%02d:%02d:%02d.%02d", buffer, gpsReader.time.hour(), gpsReader.time.minute(), gpsReader.time.second(), gpsReader.time.centisecond());
     }
     else
     {
-        sprintf(buffer, "INVALID");
+        sprintf(buffer, "%sINVALID", buffer);
     }
 }
 
@@ -475,17 +482,60 @@ void diveStart()
     initSensors();
     initGPS();
     initIMU();
+    initSD();
+    DiveCount++;
+    Serial.printf("Starting dive %d\n", DiveCount);
+    char path[32];
+    sprintf(path, "logs/%d.log", DiveCount);
+    writeFile(SD, path, "Dive Start!\n");
 }
 
-void diveEnd(DIVE_SAMPLE *diveData, const char *message)
+const int PRINT_LEN = 1024;
+const int LINE_MAX = 150;
+void diveEnd(int samples, const char *message)
 {
-    Serial.printf("Ending dive: %s\n", message);
-    // TODO: write to file!
+    Serial.printf("Ending dive %d with %d samples: %s\n", DiveCount, samples, message);
+    // TODO: write samples to file!
+    char path[32];
+    sprintf(path, "logs/%d.log", DiveCount);
+
+    File file = SD.open(path, FILE_APPEND);
+    if (!file)
+    {
+        Serial.printf("Failed to open file %s for appending!\n", path);
+        return;
+    }
+
+    char lines[PRINT_LEN];
+    int lineLen;
+    int sampleNo = 0;
+    while (sampleNo < samples)
+    {
+        lineLen = 0;
+        while (lineLen < PRINT_LEN - LINE_MAX && sampleNo < samples)
+        {
+            lineLen += sprintSampleNo(&lines[lineLen], sampleNo);
+            sampleNo++;
+        }
+        if (!file.print(lines))
+        {
+            Serial.printf("Append %d failed\n", sampleNo);
+        }
+        //appendFile(fs, path, lines);
+    }
+    if (!file.print("Dive End!"))
+    {
+        Serial.println("Last append failed");
+    }
+    //appendFile(fs, path, "Dive End!\n");
+
+    file.close();
+
+    Serial.printf("Dive %s Written.\n", path);
 }
 
 const int START_WET = 3;
 const int END_DRY = 5;
-const int MAX_SAMPLES = 10;
 
 // returns sample count
 int dive()
@@ -508,8 +558,6 @@ int dive()
 
     tsys01 *tempSensor = new tsys01();
     ms5837 *depthSensor = new ms5837();
-
-    DIVE_SAMPLE diveData[MAX_SAMPLES];
 
     int blink = HIGH;
     int waitInterval = 100;
@@ -548,10 +596,11 @@ int dive()
         {
             digitalWrite(GPIO_LED4, blink); // heartbeat
             blink = 1 - blink;              // heartbeat
-            diveData[samples] = diveSample(tempSensor, depthSensor);
-            samples++;
+            DiveData[samples] = diveSample(tempSensor, depthSensor);
             // HERE: trips "Stack canary watchpoint triggered (loopTask)"
-            printSample(diveData[samples]);
+            printSampleNo(samples);
+            printGPS();
+            samples++;
         }
 
         // end dive at 30 seconds dry, or at full memory
@@ -568,7 +617,7 @@ int dive()
 
     char buffer[255];
     sprintf(buffer, "Stats: S: %d, FC: %d", samples, flipCount);
-    diveEnd(diveData, buffer);
+    diveEnd(samples, buffer);
     return samples;
 }
 
@@ -701,6 +750,46 @@ void initIMU()
         Serial.println("Final failure to communicate with LSM9DS1");
         Serial.println("Double-check wiring.");
     }
+}
+
+bool initSD()
+{
+    bool success = true;
+    if (!SD.begin())
+    {
+        Serial.println("Card Mount Failed");
+        //return false;
+        success=false;
+    }
+    uint8_t cardType = SD.cardType();
+
+    if (cardType == CARD_NONE)
+    {
+        Serial.println("No SD card attached");
+        return false;
+    }
+
+    Serial.print("SD Card Type: ");
+    if (cardType == CARD_MMC)
+    {
+        Serial.println("MMC");
+    }
+    else if (cardType == CARD_SD)
+    {
+        Serial.println("SDSC");
+    }
+    else if (cardType == CARD_SDHC)
+    {
+        Serial.println("SDHC");
+    }
+    else
+    {
+        Serial.println("UNKNOWN");
+    }
+
+    uint64_t cardSize = SD.cardSize() / (1024 * 1024);
+    Serial.printf("SD Card Size: %lluMB\n", cardSize);
+    return success;
 }
 
 void setup()
