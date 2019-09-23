@@ -23,6 +23,32 @@ tsys01::tsys01()
     }
 }
 
+uint16_t *tsys01::calibration()
+{
+    return _calibrationValue;
+}
+
+uint32_t tsys01::rawTemp()
+{
+    Wire.beginTransmission(_addr);
+    Wire.write(_adc_temp_conv);
+    Wire.endTransmission();
+
+    delay(10);
+
+    Wire.beginTransmission(_addr);
+    Wire.write(_adc_read);
+    Wire.endTransmission();
+
+    Wire.requestFrom(_addr, 3);
+    uint32_t data = 0;
+    data = Wire.read();
+    data = (data << 8) | Wire.read();
+    data = (data << 8) | Wire.read();
+
+    return data;
+}
+
 double tsys01::readTemp()
 {
     Wire.beginTransmission(_addr);

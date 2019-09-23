@@ -132,6 +132,30 @@ void ms5837::computePressure()
     _pressure = ((_rawPres * sensitivity / pow(2, 21) - offset) / pow(2, 13)) / 10;
 }
 
+uint16_t *ms5837::calibration()
+{
+    return _msCalibrationValue;
+}
+
+uint32_t *ms5837::rawVals()
+{
+    uint32_t rawData[2];
+    readValues();
+    rawData[0] = _rawPres;
+    rawData[1] = _rawTemp;
+    return rawData;
+}
+
+uint32_t ms5837::rawTemp()
+{
+    return _rawTemp;
+}
+
+uint32_t ms5837::rawPres()
+{
+    return _rawPres;
+}
+
 float ms5837::readPressure()
 {
     computePressure();

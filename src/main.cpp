@@ -21,7 +21,6 @@ AutoConnect Portal(Server);
 
 LSM9DS1 imu;
 TinyGPSPlus gpsReader;
-static bool diving = false;
 
 #define LSM9DS1_M 0x1E  // Would be 0x1C if SDO_M is LOW
 #define LSM9DS1_AG 0x6B // Would be 0x6A if SDO_AG is LOW
@@ -31,6 +30,77 @@ static bool diving = false;
 static unsigned long lastPrint = 0; // Keep track of print time
 
 #define DECLINATION -9.13 // Declination (degrees) in Raleigh, NC.
+
+//
+// HERMES DATA FORMATS
+//
+typedef struct GPS_LOC
+{
+    float latitude, longitude; // -90 to 90, 180 to -180
+} GPS_LOC;
+
+// Raw depth storage
+typedef struct RAW_DEPTH
+{
+    uint32_t data1;
+    uint32_t data2;
+} RAW_DEPTH;
+
+typedef struct DIVE_SAMPLE
+{
+    uint32_t tempTs;
+    uint32_t tempMs;
+    uint32_t presMs;
+    double lat, lng;
+    uint32_t date, time;
+    int16_t tempImu;
+    int16_t gx, gy, gz; // x, y, and z axis readings of the gyroscope
+    int16_t ax, ay, az; // x, y, and z axis readings of the accelerometer
+    int16_t mx, my, mz; // x, y, and z axis readings of the magnetometer
+} DIVE_SAMPLE;
+
+typedef struct DIVE_DATA
+{
+    char depth[2];
+    char temp1[2];
+    char temp2[2];
+} DIVE_DATA;
+
+typedef struct DIVE_INFO
+{
+    char diveId;
+    float latStart, latEnd, longStart, longEnd;
+    int dataCount;
+    unsigned long timeStart, timeEnd;
+    DIVE_DATA *diveData;
+} DIVE_INFO;
+
+// Data storage
+DIVE_DATA lastSample;
+DIVE_INFO diveInfo;
+RAW_DEPTH lastDepth;
+//
+// END HERMES DATA FORMATS
+//
+
+void sprintSample(char *buffer, DIVE_SAMPLE sample)
+{
+    sprintf(buffer, "%d,%d,%d, %.3f,%.3f, %d,%d, %d, %d,%d,%d, %d,%d,%d, %d,%d,%d",
+            sample.tempTs, sample.tempMs, sample.presMs,
+            sample.lat, sample.lng,
+            sample.date, sample.time,
+            sample.tempImu,
+            sample.gx, sample.gy, sample.gz,
+            sample.ax, sample.ay, sample.az,
+            sample.mx, sample.my, sample.mz);
+}
+
+void printSample(DIVE_SAMPLE sample)
+{
+    char buffer[512];
+    sprintSample(buffer, sample);
+    Serial.println(buffer);
+}
 
 void startPortal()
 {
@@ -209,59 +279,44 @@ void printAttitude(float ax, float ay, float az, float mx, float my, float mz)
     Serial.println(heading, 2);
 }
 
-void printGPS()
+void sprintGPS(char *buffer)
 {
-    Serial.print(F("Location: "));
+    sprintf(buffer, "Location: ");
     if (gpsReader.location.isValid())
     {
-        Serial.print(gpsReader.location.lat(), 6);
-        Serial.print(F(","));
-        Serial.print(gpsReader.location.lng(), 6);
+        sprintf(buffer, "%.6f,%.6f", gpsReader.location.lat(), gpsReader.location.lng());
     }
     else
     {
-        Serial.print(F("INVALID"));
+        sprintf(buffer, "INVALID");
     }
 
-    Serial.print(F("  Date/Time: "));
+    sprintf(buffer, "  Date/Time: ");
     if (gpsReader.date.isValid())
     {
-        Serial.print(gpsReader.date.month());
-        Serial.print(F("/"));
-        Serial.print(gpsReader.date.day());
-        Serial.print(F("/"));
-        Serial.print(gpsReader.date.year());
+        sprintf(buffer, "%d-%02d-%02d", gpsReader.date.year(), gpsReader.date.month(), gpsReader.date.day());
     }
     else
     {
-        Serial.print(F("INVALID"));
+        sprintf(buffer, "INVALID");
     }
 
-    Serial.print(F(" "));
+    sprintf(buffer, " ");
     if (gpsReader.time.isValid())
     {
-        if (gpsReader.time.hour() < 10)
-            Serial.print(F("0"));
-        Serial.print(gpsReader.time.hour());
-        Serial.print(F(":"));
-        if (gpsReader.time.minute() < 10)
-            Serial.print(F("0"));
-        Serial.print(gpsReader.time.minute());
-        Serial.print(F(":"));
-        if (gpsReader.time.second() < 10)
-            Serial.print(F("0"));
-        Serial.print(gpsReader.time.second());
-        Serial.print(F("."));
-        if (gpsReader.time.centisecond() < 10)
-            Serial.print(F("0"));
-        Serial.print(gpsReader.time.centisecond());
+        sprintf(buffer, "%02d:%02d:%02d.%02d", gpsReader.time.hour(), gpsReader.time.minute(), gpsReader.time.second(), gpsReader.time.centisecond());
     }
     else
     {
-        Serial.print(F("INVALID"));
+        sprintf(buffer, "INVALID");
     }
+}
 
-    Serial.println();
+void printGPS()
+{
+    char buffer[255];
+    sprintGPS(buffer);
+    Serial.println(buffer);
 }
 
 const int maxSentences = 20; // high; calibrate to full sample from hardware?
@@ -287,40 +342,71 @@ int readGPS()
                       gpsReader.charsProcessed(), gpsReader.sentencesWithFix(),
                       gpsReader.passedChecksum(), gpsReader.failedChecksum());
     }
+    return sentenceCount;
 }
 
-void diveStart()
+DIVE_SAMPLE diveSample(tsys01 *tempSensor, ms5837 *depthSensor)
 {
-    initSensors();
-    initGPS();
-    initIMU();
-    diving = true;
-}
+    DIVE_SAMPLE sample;
 
-void diveEnd()
-{
-    diving = false;
-}
+    // Core sensors first
+    sample.tempTs = tempSensor->readTemp();
+    sample.tempMs = depthSensor->readTemp();
+    sample.presMs = depthSensor->readDepth();
 
-void diveSample()
-{
+    Serial.println("Core done.");
+
     // Update the sensor values whenever new data is available
     if (imu.gyroAvailable())
     {
         imu.readGyro();
+        sample.gx = imu.gx;
+        sample.gy = imu.gy;
+        sample.gz = imu.gz;
+    }
+    else
+    {
+        sample.gx = 0;
+        sample.gy = 0;
+        sample.gz = 0;
     }
     if (imu.accelAvailable())
     {
         imu.readAccel();
+        sample.ax = imu.ax;
+        sample.ay = imu.ay;
+        sample.az = imu.az;
+    }
+    else
+    {
+        sample.ax = 0;
+        sample.ay = 0;
+        sample.az = 0;
     }
     if (imu.magAvailable())
     {
         imu.readMag();
+        sample.mx = imu.mx;
+        sample.my = imu.my;
+        sample.mz = imu.mz;
+    }
+    else
+    {
+        sample.mx = 0;
+        sample.my = 0;
+        sample.mz = 0;
     }
     if (imu.tempAvailable())
     {
         imu.readTemp();
+        sample.tempImu = imu.temperature;
     }
+    else
+    {
+        sample.tempImu = 0;
+    }
+
+    Serial.println("IMU done.");
 
     if (GPSSerial.available() > 0)
     {
@@ -330,6 +416,46 @@ void diveSample()
     {
         Serial.println(F("GPS Err: no new samples"));
     }
+    if (gpsReader.location.isValid())
+    {
+        sample.lat = gpsReader.location.lat();
+        sample.lng = gpsReader.location.lng();
+    }
+    else
+    {
+        sample.lat = 0;
+        sample.lng = 0;
+    }
+    if (gpsReader.date.isValid())
+    {
+        sample.date = gpsReader.date.value();
+    }
+    else
+    {
+        sample.date = 0;
+    }
+    if (gpsReader.time.isValid())
+    {
+        sample.time = gpsReader.time.value();
+    }
+    else
+    {
+        sample.time = 0;
+    }
+
+    Serial.println("GPS done.");
+
+    return sample;
+}
+
+void printSample()
+{
+    tsys01 *tempSensor;
+    ms5837 *depthSensor;
+    tempSensor = new tsys01();
+    depthSensor = new ms5837();
+
+    diveSample(tempSensor, depthSensor);
 
     printGyro();  // Print "G: gx, gy, gz"
     printAccel(); // Print "A: ax, ay, az"
@@ -339,18 +465,116 @@ void diveSample()
                   -imu.my, -imu.mx, imu.mz);
     Serial.printf("I Temp %d\n", imu.temperature);
 
-    tsys01 *tempSensor;
-    tempSensor = new tsys01();
-    ms5837 *depthSensor;
-    depthSensor = new ms5837();
-
     Serial.printf("T Temp %f\n", tempSensor->readTemp());
     Serial.printf("M Temp %f\n", depthSensor->readTemp());
     Serial.printf("Depth %f\n", depthSensor->readDepth());
 }
 
+void diveStart()
+{
+    initSensors();
+    initGPS();
+    initIMU();
+}
+
+void diveEnd(DIVE_SAMPLE *diveData, const char *message)
+{
+    Serial.printf("Ending dive: %s\n", message);
+    // TODO: write to file!
+}
+
+const int START_WET = 3;
+const int END_DRY = 5;
+const int MAX_SAMPLES = 10;
+
+// returns sample count
+int dive()
+{
+    int consecWet = 0;
+    int consecDry = 0;
+    int thisWater;
+    int lastWater = 1; // last water sensor read
+    int flipCount = 0; // how many times did we change wet/dry state?
+    int samples = 0;
+    bool diving = false;
+
+    /*
+    timer = timerBegin(1,1000000,true);
+    timerAttachInterrupt(timer, diveInner, false);
+    timerReadSeconds(timer);
+    */
+
+    diveStart();
+
+    tsys01 *tempSensor = new tsys01();
+    ms5837 *depthSensor = new ms5837();
+
+    DIVE_SAMPLE diveData[MAX_SAMPLES];
+
+    int blink = HIGH;
+    int waitInterval = 100;
+
+    while (true) // panic-to-reset?!
+    //for (int i = 0; i < MAX_SAMPLES * 2; i++)
+    {
+        // read water sensor:
+        thisWater = digitalRead(GPIO_WATER);
+        if (thisWater != lastWater)
+        {
+            flipCount++;
+        }
+        lastWater = thisWater;
+        if (thisWater)
+        {
+            consecWet++;
+            consecDry = 0;
+        }
+        else
+        {
+            consecDry++;
+            consecWet = 0;
+        }
+        Serial.printf("Water: %d\n", thisWater);
+
+        // require 15 seconds wet to start dive sampling
+        if (!diving && consecWet > START_WET)
+        {
+            diving = true;
+            digitalWrite(GPIO_LED3, HIGH); // dive indicator
+        }
+
+        // While diving, sample every second
+        if (diving)
+        {
+            digitalWrite(GPIO_LED4, blink); // heartbeat
+            blink = 1 - blink;              // heartbeat
+            diveData[samples] = diveSample(tempSensor, depthSensor);
+            samples++;
+            // HERE: trips "Stack canary watchpoint triggered (loopTask)"
+            printSample(diveData[samples]);
+        }
+
+        // end dive at 30 seconds dry, or at full memory
+        if (consecDry >= END_DRY || samples >= MAX_SAMPLES)
+        {
+            digitalWrite(GPIO_LED3, LOW); // dive indicator
+            diving = false;
+            break;
+        }
+
+        // TODO: delay until next second; semi-busy wait (or use timer-and-interrupt correctly)
+        delay(1000);
+    }
+
+    char buffer[255];
+    sprintf(buffer, "Stats: S: %d, FC: %d", samples, flipCount);
+    diveEnd(diveData, buffer);
+    return samples;
+}
+
 void wakeup()
 {
+    digitalWrite(GPIO_LED2, HIGH); // wake indicator
     Serial.println("Wakeup:");
     uint64_t wakeup_reason = esp_sleep_get_ext1_wakeup_status();
     uint64_t mask = 1;
@@ -375,19 +599,25 @@ void wakeup()
     }
     if (diveSamples > 0)
     {
+        Serial.printf("Entering dive . . .\n");
+        int samples = dive();
+        Serial.printf("Dive done: %d samples\n", samples);
+        /*
         if (!diving)
             diveStart();
         for (i = 0; i < diveSamples; i++)
         {
             Serial.printf("%d:\n", i);
-            diveSample();
+            printSample();
             delay(1000);
         }
+        */
     }
 }
 
 void sleep()
 {
+    digitalWrite(GPIO_LED2, LOW); // wake indicator
     Serial.println("Sleep:");
     uint64_t wakeMask = 1ULL << GPIO_CONFIG | 1ULL << GPIO_WATER;
     esp_sleep_enable_ext1_wakeup(wakeMask, ESP_EXT1_WAKEUP_ANY_HIGH);
@@ -436,7 +666,7 @@ void initGPS()
     Serial.println("GPS started, waiting for lock...");
     int gpsDelay = 5;
     delay(gpsDelay * 1000);
-    Serial.printf("%d seconds passed, assuming GPS lock.", gpsDelay);
+    Serial.printf("%d seconds passed, assuming GPS lock.\n", gpsDelay);
 }
 
 void initIMU()
@@ -447,14 +677,29 @@ void initIMU()
 
     Wire.begin(I2C_SDA, I2C_SCL); // this should be done in the library
 
-    if (!imu.begin())
+    int maxImuTries = 5;
+    int imuTries = 0;
+    bool imuSuccess = false;
+    while (!imuSuccess && imuTries < maxImuTries)
     {
-        Serial.println("Failed to communicate with LSM9DS1.");
+        imuSuccess = imu.begin();
+        imuTries++;
+        if (imuSuccess)
+        {
+            Serial.printf("Initiated LSM9DS1 after %d tries.\n", imuTries);
+            break;
+        }
+        else
+        {
+            int imuDelay = 1;
+            Serial.printf("Failed to communicate with LSM9DS1; retrying in %d seconds\n", imuDelay);
+            delay(imuDelay * 1000);
+        }
+    }
+    if (!imuSuccess)
+    {
+        Serial.println("Final failure to communicate with LSM9DS1");
         Serial.println("Double-check wiring.");
-        /*
-        while (true)
-            ; // this is a bad idea
-        */
     }
 }
 
@@ -463,6 +708,8 @@ void setup()
     initSerial();
     Serial.println("Setup:");
     initGpio();
+
+    digitalWrite(GPIO_LED1, HIGH); // running indicator
 
     wakeup();
     sleep();
