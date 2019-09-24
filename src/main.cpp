@@ -33,6 +33,8 @@ static unsigned long lastPrint = 0; // Keep track of print time
 
 #define DECLINATION -9.13 // Declination (degrees) in Raleigh, NC.
 
+#define HOLD_FOR_DUMP // No sleep until dumped to serial
+
 //
 // HERMES DATA FORMATS
 //
@@ -82,8 +84,10 @@ DIVE_DATA lastSample;
 DIVE_INFO diveInfo;
 RAW_DEPTH lastDepth;
 
-const int MAX_SAMPLES = 1000;
+const int MAX_SAMPLES = 1200;
 DIVE_SAMPLE DiveData[MAX_SAMPLES];
+int CurSamples = 0;
+bool Dumped = false;
 
 int DiveCount = 0;
 //
@@ -534,20 +538,61 @@ void diveEnd(int samples, const char *message)
     Serial.printf("Dive %s Written.\n", path);
 }
 
-const int START_WET = 3;
-const int END_DRY = 5;
+void printCalibrations(tsys01 *tempSensor, ms5837 *depthSensor)
+{
+    uint16_t *calibrations;
+    Serial.println("Calibrations:");
+    calibrations = tempSensor->calibration();
+    Serial.printf("Temp: [%d, %d, %d, %d, %d, %d, %d, %d]\n",
+                  calibrations[0], calibrations[1], calibrations[2], calibrations[3],
+                  calibrations[4], calibrations[5], calibrations[6], calibrations[7]);
+    calibrations = depthSensor->calibration();
+    Serial.printf("Pres: [%d, %d, %d, %d, %d, %d, %d, %d]\n",
+                  calibrations[0], calibrations[1], calibrations[2], calibrations[3],
+                  calibrations[4], calibrations[5], calibrations[6], calibrations[7]);
+}
+
+// dump saved dive to serial
+int diveDump(tsys01 *tempSensor, ms5837 *depthSensor)
+{
+    Serial.printf("\n\nDumping Dive %d (%d) . . .\n", DiveCount, CurSamples);
+    for (int i = 0; i < CurSamples; i++)
+    {
+        printSampleNo(i);
+    }
+    printCalibrations(tempSensor, depthSensor);
+    Serial.printf("Dive %d (%d) Written.\n\n\n", DiveCount, CurSamples);
+    Dumped = true;
+}
+
+const int START_WET = 0;    // 0 == record immediately on wake
+const int END_DRY = 3600;   // >MAX_SAMPLES == always record max dive time
 
 // returns sample count
 int dive()
 {
     int consecWet = 0;
+    int maxWet = 0;
     int consecDry = 0;
     int thisWater;
     int lastWater = 1; // last water sensor read
     int flipCount = 0; // how many times did we change wet/dry state?
-    int samples = 0;
     bool diving = false;
 
+    if (CurSamples > 0)
+    {
+        if (Dumped)
+        {
+            Serial.printf("Starting new dive; overwriting %d samples (dumped)\n", CurSamples);
+            CurSamples = 0;
+            Dumped = false;
+        }
+        else
+        {
+            Serial.printf("Skipping new dive; %d samples not yet dumped\n", CurSamples);
+            return 0;
+        }
+    }
     /*
     timer = timerBegin(1,1000000,true);
     timerAttachInterrupt(timer, diveInner, false);
@@ -562,8 +607,7 @@ int dive()
     int blink = HIGH;
     int waitInterval = 100;
 
-    while (true) // panic-to-reset?!
-    //for (int i = 0; i < MAX_SAMPLES * 2; i++)
+    while (true)
     {
         // read water sensor:
         thisWater = digitalRead(GPIO_WATER);
@@ -575,6 +619,10 @@ int dive()
         if (thisWater)
         {
             consecWet++;
+            if (consecWet > maxWet)
+            {
+                maxWet = consecWet;
+            }
             consecDry = 0;
         }
         else
@@ -583,9 +631,10 @@ int dive()
             consecWet = 0;
         }
         Serial.printf("Water: %d\n", thisWater);
+        digitalWrite(GPIO_LED1, thisWater); // water indicator
 
         // require 15 seconds wet to start dive sampling
-        if (!diving && consecWet > START_WET)
+        if (!diving && consecWet >= START_WET)
         {
             diving = true;
             digitalWrite(GPIO_LED3, HIGH); // dive indicator
@@ -596,15 +645,19 @@ int dive()
         {
             digitalWrite(GPIO_LED4, blink); // heartbeat
             blink = 1 - blink;              // heartbeat
-            DiveData[samples] = diveSample(tempSensor, depthSensor);
-            // HERE: trips "Stack canary watchpoint triggered (loopTask)"
-            printSampleNo(samples);
+            DiveData[CurSamples] = diveSample(tempSensor, depthSensor);
+            // HERE: trips "Stack canary watchpoint triggered (loopTask) -- [if passing dive data]"
+            printSampleNo(CurSamples);
             printGPS();
-            samples++;
+            CurSamples++;
+        }
+        else
+        {
+            digitalWrite(GPIO_LED4, LOW); // heartbeat
         }
 
         // end dive at 30 seconds dry, or at full memory
-        if (consecDry >= END_DRY || samples >= MAX_SAMPLES)
+        if (consecDry >= END_DRY || CurSamples >= MAX_SAMPLES)
         {
             digitalWrite(GPIO_LED3, LOW); // dive indicator
             diving = false;
@@ -615,10 +668,24 @@ int dive()
         delay(1000);
     }
 
-    char buffer[255];
-    sprintf(buffer, "Stats: S: %d, FC: %d", samples, flipCount);
-    diveEnd(samples, buffer);
-    return samples;
+    char diveDesc[255];
+    sprintf(diveDesc, "Stats: S: %d, FC: %d, MW: %d", CurSamples, flipCount, maxWet);
+    diveEnd(CurSamples, diveDesc);
+#ifdef HOLD_FOR_DUMP
+    while (!Dumped && CurSamples > 0)
+    {
+        Serial.println("Holding for dump . . .");
+        delay(10000);
+        if (digitalRead(GPIO_CONFIG))
+        {
+            digitalWrite(GPIO_LED4, HIGH); // heartbeat
+            diveDump(tempSensor, depthSensor);
+        }
+    }
+    Serial.printf("Dump complete; dive stats: %s\n", diveDesc);
+    delay(5000);
+#endif
+    return CurSamples;
 }
 
 void wakeup()
@@ -634,13 +701,14 @@ void wakeup()
         if (wakeup_reason & mask)
         {
             Serial.printf("Wakeup because %d\n", i);
-            if (i == GPIO_WATER)
+            if (i == GPIO_CONFIG)
+            {
+                //diveDump();   // memory cleared on deep sleep, not useful
+                diveSamples = 5;
+            }
+            else if (i == GPIO_WATER)
             {
                 diveSamples = 1;
-            }
-            else if (i == GPIO_CONFIG)
-            {
-                diveSamples = 5;
             }
         }
         i++;
@@ -759,7 +827,7 @@ bool initSD()
     {
         Serial.println("Card Mount Failed");
         //return false;
-        success=false;
+        success = false;
     }
     uint8_t cardType = SD.cardType();
 
@@ -798,7 +866,7 @@ void setup()
     Serial.println("Setup:");
     initGpio();
 
-    digitalWrite(GPIO_LED1, HIGH); // running indicator
+    //digitalWrite(GPIO_LED1, HIGH); // running indicator
 
     wakeup();
     sleep();
