@@ -4,6 +4,7 @@
 
 #include <Storage/Storage.hpp>
 #include <Types.hpp>
+#include <Utils.hpp>
 
 using namespace std;
 
@@ -76,7 +77,8 @@ private:
 
         storage->makeDirectory(String("/" + ID).c_str());
 
-        data = data + "id:" + ID + "\n";
+        data = data + "deviceId:" + deviceID() + "\n";
+        data = data + "diveId:" + ID + "\n";
         data = data + "startTime:" + time + "\n";
         data = data + "startLat:" + lat + "\n";
         data = data + "startLng:" + lng + "\n";
