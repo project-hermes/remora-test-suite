@@ -28,7 +28,6 @@ private:
         {
             if (gps.encode(GPSSerial.read()))
             {
-                Serial.printf("%d/%d/%d\n",gps.date.month(), gps.date.day(),gps.date.year());
                 if (gps.date.isValid() && gps.time.isValid())
                 {
                     TimeElements gpsTime = {

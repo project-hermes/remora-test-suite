@@ -107,7 +107,7 @@ private:
     {
         byte shaResult[32];
         WiFi.mode(WIFI_MODE_STA);
-        String unhashed_id = String() + WiFi.macAddress();
+        String unhashed_id = String(time) + WiFi.macAddress();
         mbedtls_md_context_t ctx;
         mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
 
