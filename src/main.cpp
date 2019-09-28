@@ -8,6 +8,7 @@
 #include <hal/remora-hal.h>
 #include <Storage/SecureDigital.hpp>
 #include <Navigation/GNSS.hpp>
+#include <Utils.hpp>
 
 GNSS gps;
 
@@ -19,6 +20,8 @@ void setup()
     delay(10);
     Wire.begin(I2C_SDA, I2C_SCL);
     delay(10);
+
+    Serial.printf("Remora ID:%s", remoraID());
 
     gps = GNSS();
     SecureDigital sd = SecureDigital();
