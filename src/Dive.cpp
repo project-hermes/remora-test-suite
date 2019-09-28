@@ -1,5 +1,5 @@
 #include <Dive.hpp>
-#include <Storage.hpp>
+#include <Storage/Storage.hpp>
 
 Dive::Dive(void) {}
 
@@ -8,8 +8,9 @@ Dive::Dive(Storage *s)
     storage = s;
 }
 
-String Dive::Start(long time, double lat, double lng)
+String Dive::Start(long time, lat lat, lng lng)
 {
+    Serial.println(time);
     ID = createID(time);
     diveRecords = new Record[siloRecordSize];
     if(writeMetadataStart(time,lat,lng, 1)==-1){
@@ -18,7 +19,8 @@ String Dive::Start(long time, double lat, double lng)
     return ID;
 }
 
-String Dive::End(long time, double lat, double lng){
+String Dive::End(long time, lat lat, lng lng){
+    Serial.println(time);
     if(writeMetadataEnd(time, lat, lng)==-1){
         return "";
     }

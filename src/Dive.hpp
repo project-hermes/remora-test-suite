@@ -2,7 +2,7 @@
 #include <WiFi.h>
 #include <ArduinoJson.h>
 
-#include <Storage.hpp>
+#include <Storage/Storage.hpp>
 #include <Types.hpp>
 
 using namespace std;
@@ -32,8 +32,8 @@ class Dive
 public:
     Dive();
     Dive(Storage *s);
-    String Start(long time, double lat, double lng);
-    String End(long time, double lat, double lng);
+    String Start(long time, lat lat, lng lng);
+    String End(long time, lat lat, lng lng);
     int NewRecord(Record r);
 
 private:

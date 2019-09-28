@@ -5,4 +5,7 @@ typedef double temperature;
 typedef double pressure;
 typedef double depth;
 
+typedef double lat;
+typedef double lng;
+
 #endif
