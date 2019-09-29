@@ -1,15 +1,16 @@
 #include <Arduino.h>
 
+#include <Wake.hpp>
+
 void setup()
 {
     Serial.begin(115200);
-    Serial2.begin(9600);
+    delay(1000);
+
+    wake();
+    sleep();
 }
 
 void loop()
 {
-    while (Serial2.available())
-    {
-        Serial.print(char(Serial2.read()));
-    }
 }
