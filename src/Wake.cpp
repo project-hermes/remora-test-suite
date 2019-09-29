@@ -12,11 +12,17 @@
 #include <Utils.hpp>
 #include <Wake.hpp>
 
+//this is so bad, I know
+#define FIRMWARE_VERSION 1
+
 void wake()
 {
+    Serial.printf("firmware version:%d\n", FIRMWARE_VERSION);
+
     pinMode(GPIO_LED2, OUTPUT);
     pinMode(GPIO_LED3, OUTPUT);
     pinMode(GPIO_LED4, OUTPUT);
+    pinMode(GPIO_WATER, INPUT);
     digitalWrite(GPIO_LED3, LOW);
     digitalWrite(GPIO_LED4, LOW);
 
@@ -49,7 +55,11 @@ void wake()
                 }
                 else
                 {
-                    while (digitalRead(GPIO_VCC_SENSE) == 1)
+                    for (int i = 0; i < 100; i++)
+                    {
+                        Serial.println(digitalRead(GPIO_WATER));
+                    }
+                    while (digitalRead(GPIO_WATER) == 1)
                     {
                         Record tempRecord = Record{temperatureSensor.getTemp(), depthSensor.getDepth()};
                         d.NewRecord(tempRecord);
@@ -86,7 +96,7 @@ void wake()
 
 void sleep()
 {
-    uint64_t wakeMask = 1ULL << GPIO_VCC_SENSE | 1ULL << GPIO_WATER;
+    uint64_t wakeMask = 1ULL << GPIO_WATER; // 1ULL << GPIO_VCC_SENSE |
     esp_sleep_enable_ext1_wakeup(wakeMask, ESP_EXT1_WAKEUP_ANY_HIGH);
     Serial.println("Going to sleep now");
     esp_deep_sleep_start();
@@ -112,9 +122,7 @@ void startPortal()
     {
         Portal.handleClient();
     }
-    Portal.end();
     ota();
-    Portal.begin();
     while (digitalRead(GPIO_VCC_SENSE) == 1)
     {
         Portal.handleClient();
@@ -123,17 +131,24 @@ void startPortal()
 
 void ota()
 {
-    String url = "http://us-central1-project-hermes-staging.cloudfunctions.net/ota";
-    String file;
+    String cloudFunction = "http://us-central1-project-hermes-staging.cloudfunctions.net/ota";
+    String bucketURL = "http://storage.googleapis.com/remora-firmware/";
+    String version;
     HTTPClient http;
 
     Serial.println(WiFi.localIP());
 
-    if (http.begin(url))
+    if (http.begin(cloudFunction))
     {
         if (http.GET() == 200)
         {
-            file = http.getString();
+            version = http.getString();
+            if (version.toInt() <= FIRMWARE_VERSION)
+            {
+                http.end();
+                Serial.printf("Will not update as I am version:%ld and you are offering version:%d\n", version.toInt(), FIRMWARE_VERSION);
+                return;
+            }
         }
         else
         {
@@ -150,7 +165,8 @@ void ota()
 
     size_t written = 0;
     size_t gotten = 1;
-    if (http.begin(file))
+    String firmware_url = bucketURL + "firmware_" + FIRMWARE_VERSION + ".bin";
+    if (http.begin(firmware_url))
     {
         if (http.GET() == 200)
         {
