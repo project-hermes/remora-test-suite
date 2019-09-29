@@ -55,10 +55,6 @@ void wake()
                 }
                 else
                 {
-                    for (int i = 0; i < 100; i++)
-                    {
-                        Serial.println(digitalRead(GPIO_WATER));
-                    }
                     while (digitalRead(GPIO_WATER) == 1)
                     {
                         Record tempRecord = Record{temperatureSensor.getTemp(), depthSensor.getDepth()};
