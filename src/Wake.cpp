@@ -119,7 +119,8 @@ void startPortal()
         while (WiFi.status() == WL_DISCONNECTED)
         {
             Portal.handleClient();
-            if(digitalRead(GPIO_VCC_SENSE) == 0){
+            if (digitalRead(GPIO_VCC_SENSE) == 0)
+            {
                 return;
             }
         }
