@@ -14,9 +14,16 @@
 
 void wake()
 {
+    pinMode(GPIO_LED2, OUTPUT);
+    pinMode(GPIO_LED3, OUTPUT);
+    pinMode(GPIO_LED4, OUTPUT);
+    digitalWrite(GPIO_LED3, LOW);
+    digitalWrite(GPIO_LED4, LOW);
+
     uint64_t wakeup_reason = esp_sleep_get_ext1_wakeup_status();
     uint64_t mask = 1;
     int i = 0;
+    bool led_on = false;
     while (i < 64)
     {
         if (wakeup_reason & mask)
@@ -46,6 +53,17 @@ void wake()
                     {
                         Record tempRecord = Record{temperatureSensor.getTemp(), depthSensor.getDepth()};
                         d.NewRecord(tempRecord);
+
+                        delay(1000);
+                        if (led_on)
+                        {
+                            digitalWrite(GPIO_LED2, HIGH);
+                        }
+                        else
+                        {
+                            digitalWrite(GPIO_LED2, LOW);
+                        }
+                        led_on = !led_on;
                     }
                     if (d.End(now(), gps.getLat(), gps.getLng()) == "")
                     {
@@ -83,52 +101,85 @@ void startPortal()
     AutoConnectConfig acConfig("Remora Config", "cousteau");
     acConfig.autoReconnect = true;
     acConfig.autoReset = false;
+    acConfig.portalTimeout = 15 * 60 * 1000;
     acConfig.title = "Remora Config";
     acConfig.ticker = true;
     acConfig.tickerPort = GPIO_LED1;
     acConfig.tickerOn = HIGH;
     Portal.config(acConfig);
     Portal.begin();
-    while (WiFi.getMode() == WIFI_AP_STA)
+    while (WiFi.status() == WL_DISCONNECTED)
     {
         Portal.handleClient();
     }
+    Portal.end();
     ota();
+    Portal.begin();
+    while (digitalRead(GPIO_VCC_SENSE) == 1)
+    {
+        Portal.handleClient();
+    }
 }
 
 void ota()
 {
-    String url = "https://us-central1-project-hermes-staging.cloudfunctions.net/ota";
+    String url = "http://us-central1-project-hermes-staging.cloudfunctions.net/ota";
     String file;
     HTTPClient http;
 
-    http.begin(url);
-    if (http.GET() == 200)
+    Serial.println(WiFi.localIP());
+
+    if (http.begin(url))
     {
-        file = http.getString();
+        if (http.GET() == 200)
+        {
+            file = http.getString();
+        }
+        else
+        {
+            Serial.println("could not contact cloud function");
+            http.end();
+            return;
+        }
     }
     else
     {
-        Serial.println("could not contact cloud function");
+        Serial.println("could not begin http client");
+    }
+    http.end();
+
+    size_t written = 0;
+    size_t gotten = 1;
+    if (http.begin(file))
+    {
+        if (http.GET() == 200)
+        {
+            gotten = http.getSize();
+            if (!Update.begin(gotten))
+            {
+                Serial.printf("Firmware file too big at %d\n", gotten);
+                http.end();
+                return;
+            }
+            Serial.println("atempting to update...");
+            written = Update.writeStream(http.getStream());
+        }
+        http.end();
+    }
+    else
+    {
+        Serial.println("could not get update file");
         http.end();
         return;
     }
-    http.end();
-
-    http.begin(file);
-    size_t written = 0;
-    size_t gotten = 1;
-    if (http.GET() == 200)
-    {
-        gotten = http.getSize();
-        Serial.println("atempting to update...");
-        written = Update.writeStream(http.getStream());
-    }
-    http.end();
 
     if (written == gotten)
     {
-        Serial.println("what was gotten has been written");
+        Serial.println("Written : " + String(written) + " successfully");
+    }
+    else
+    {
+        Serial.println("Written only : " + String(written) + "/" + String(gotten) + ". Retry?");
     }
 
     if (Update.end())
