@@ -92,7 +92,7 @@ void wake()
 
 void sleep()
 {
-    uint64_t wakeMask = 1ULL << GPIO_WATER || 1ULL << GPIO_VCC_SENSE |
+    uint64_t wakeMask = 1ULL << GPIO_WATER | 1ULL << GPIO_VCC_SENSE;
     esp_sleep_enable_ext1_wakeup(wakeMask, ESP_EXT1_WAKEUP_ANY_HIGH);
     Serial.println("Going to sleep now");
     esp_deep_sleep_start();
@@ -114,11 +114,17 @@ void startPortal()
     acConfig.tickerOn = HIGH;
     Portal.config(acConfig);
     Portal.begin();
-    while (WiFi.status() == WL_DISCONNECTED)
+    if (digitalRead(GPIO_VCC_SENSE) == 1)
     {
-        Portal.handleClient();
+        while (WiFi.status() == WL_DISCONNECTED)
+        {
+            Portal.handleClient();
+            if(digitalRead(GPIO_VCC_SENSE) == 0){
+                return;
+            }
+        }
+        ota();
     }
-    ota();
     while (digitalRead(GPIO_VCC_SENSE) == 1)
     {
         Portal.handleClient();
